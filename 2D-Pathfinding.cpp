@@ -16,12 +16,14 @@
 
 #define DEFAULT_COST 1
 
+#define USE_DFT 0
+
 #pragma endregion
 
 #pragma region Includes
 
 #include <iostream>
-#include <list>
+#include <vector>
 
 #include "Window.h"
 
@@ -71,6 +73,21 @@ typedef struct {
 		return arrayX + arrayY * ONE_AXIS_CELLS;
 	}
 } cell;
+
+//// Node struct ////
+
+struct node {
+
+	node(int gCost, int hCost, int fCost, cell* c, node* parent) : gCost{ gCost }, hCost{ hCost }, fCost{ fCost }, c{ c }, parent{ parent }
+	{}
+
+	int gCost = 0;
+	int hCost = 0;
+	int fCost = 0;
+	bool visited = 0;
+	node* parent;
+	cell* c;
+};
 
 //// Grid struct ////
 
@@ -172,6 +189,8 @@ struct grid{
 		if (!startExist || !goalExist)
 			return;
 
+#if USE_DFT
+
 		// Execute A* pathfinding code
 		bool v[TOTAL_CELLS];
 		int p[TOTAL_CELLS];
@@ -189,13 +208,30 @@ struct grid{
 				cells[p[i]].type = PATH;
 			}
 		}
+
+#endif
+
+		Astar();
+
 	}
 
 private:
-	// Top, right, down, left
-	int adj[4] = { -1 * ONE_AXIS_CELLS, 1, ONE_AXIS_CELLS, -1 };
 
 	bool pathExists = 0;
+	
+	int path[TOTAL_CELLS];
+	int pathIndex = 0;
+
+#if !USE_DFT
+	int adj[8] = { -1 * ONE_AXIS_CELLS - 1, -1 * ONE_AXIS_CELLS, -1 * ONE_AXIS_CELLS + 1,
+				   -1,										   						   1,
+					    ONE_AXIS_CELLS - 1,	     ONE_AXIS_CELLS,      ONE_AXIS_CELLS + 1};
+#endif
+
+#if USE_DFT
+
+	// Top, right, down, left
+	int adj[4] = { -1 * ONE_AXIS_CELLS, 1, ONE_AXIS_CELLS, -1 };
 	
 	bool 
 	DFT(int currentIndex, bool visited[], int path[], int &pathIndex)
@@ -235,6 +271,87 @@ private:
 
 		pathIndex--;
 		visited[currentIndex] = false;
+	}
+
+#endif
+
+	int getDistance(int x, int x1, int y, int y1)
+	{
+		return std::sqrt(std::pow(x1 - x, 2) + std::pow(y1 - y, 2));
+	}
+
+	/////// THIS NEEDS TO BE CHANGED TO REFLECT PROPER G AND H COST CALCULATION! ///////
+	/// I think this is now fixed? We can try it and if things don't work we can fix it ///
+	node createNode(int x, int y, node* parent)
+	{
+		int gCost = getDistance(x, parent->c->arrayX, y, parent->c->arrayY) + parent->gCost;
+		int hCost = getDistance(x, cells[goalPosition].arrayX, y, cells[goalPosition].arrayY);
+		int fCost = gCost + hCost;
+		cell* c = &cells[x + y * ONE_AXIS_CELLS];
+		return node(gCost, hCost, fCost, c, parent);
+	}
+
+	bool checkVisited(std::vector<node> &d, int x, int y)
+	{
+		for (auto it = d.begin(); it != d.end(); it++)
+			if (it->c->arrayX == x && it->c->arrayY == y)
+				return 1;
+	}
+
+	node* fetchNode(std::vector<node>& d, int x, int y)
+	{
+		for (auto it = d.begin(); it != d.end(); it++)
+			if (it->c->arrayX == x && it->c->arrayY == y)
+				return &(*it);
+		return nullptr;
+	}
+
+	void addAndUpdateAdjacents(std::vector<node> &d, node* n)
+	{
+		for (int i = 0; i < 8; i++)
+		{
+			int offset = adj[i];
+			if (cells[offset].type != BOUNDARY && !checkVisited(d, cells[offset].arrayX, cells[offset].arrayY))
+			{
+				node* fetchedNode = fetchNode(d, cells[offset].arrayX, cells[offset].arrayY);
+				if (fetchedNode == nullptr) // We add a new node
+				{
+					d.push_back(createNode(cells[offset].arrayX, cells[offset].arrayY, n));
+				}
+				else // We update the existing node
+				{
+					// update fetchedNode
+				}
+
+			}
+		}
+	}
+
+	void
+	Astar()
+	{
+		std::vector<node> discovery;
+
+		node startingNode = createNode(cells[startPosition].arrayX, cells[startPosition].arrayY, nullptr);
+		startingNode.visited = true;
+
+		/*
+			do
+			{
+				node* n = findLowestFCost();
+
+				if(n == goalNode)
+					*Backtrack Path and Return*
+				else
+				{
+					updateAndAddAdjacents(discovery, n);
+				}
+
+			}while(!discovery.isEmpty())
+			
+			printf("No path exists :(\n");
+		*/
+		
 	}
 	
 };
