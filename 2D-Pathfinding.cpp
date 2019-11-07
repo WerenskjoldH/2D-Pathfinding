@@ -8,7 +8,7 @@
 
 // This is used for the number of cells on one axis
 // +2 is used to account for the boundary cells
-#define ONE_AXIS_CELLS (6 + 2)
+#define ONE_AXIS_CELLS (10 + 2)
 #define TOTAL_CELLS ONE_AXIS_CELLS * ONE_AXIS_CELLS
 #define CELL_OFFSET WINDOW_WIDTH/(ONE_AXIS_CELLS-2)
 
@@ -17,6 +17,8 @@
 #define DEFAULT_COST 1
 
 #define USE_DFT 0
+
+#define DRAW_VISITED_NODES 0
 
 #pragma endregion
 
@@ -51,6 +53,7 @@ typedef enum {
 	EMPTY,
 	BOUNDARY,
 	PATH,
+	DISCOVERED,
 	START,
 	GOAL
 } CELL_TYPE;
@@ -157,6 +160,8 @@ struct grid{
 					SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
 				else if (cells[cellPos].type == PATH)
 					SDL_SetRenderDrawColor(renderer, 100, 100, 255, 255);
+				else if( cells[cellPos].type == DISCOVERED)
+					SDL_SetRenderDrawColor(renderer, 150, 200, 150, 255);
 				else if (cells[cellPos].type == START)
 					SDL_SetRenderDrawColor(renderer, 180, 255, 180, 255);
 				else if (cells[cellPos].type == GOAL)
@@ -174,11 +179,12 @@ struct grid{
 		for (int i = 0; i < ONE_AXIS_CELLS; i++)
 			for (int j = 0; j < ONE_AXIS_CELLS; j++)
 			{
-				if (cells[i + j * ONE_AXIS_CELLS].type == PATH)
+				if (cells[i + j * ONE_AXIS_CELLS].type == PATH || cells[i + j * ONE_AXIS_CELLS].type == DISCOVERED)
 					cells[i + j * ONE_AXIS_CELLS].type = EMPTY;
 			}
 
 		pathExists = 0;
+		pathIndex = 0;
 	}
 
 	// A* Pathfinding, disregards diagonals
@@ -214,11 +220,12 @@ struct grid{
 
 		Astar();
 
-		//node startingNode(0, getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), &cells[startPosition], nullptr);
-
-		//node n = createNode(1, 1, &startingNode);
-
-		//printf("Node's X-value is: %i", n.c->arrayX);
+		// Draw Path
+		for (int i = 0; i < pathIndex; i++)
+		{
+			cells[path[i]].type = PATH;
+		}
+		
 
 	}
 
@@ -289,13 +296,11 @@ private:
 		return std::sqrtf(xDistSquared + yDistSquared);
 	}
 
-	/////// THIS NEEDS TO BE CHANGED TO REFLECT PROPER G AND H COST CALCULATION! ///////
-	/// I think this is now fixed? We can try it and if things don't work we can fix it ///
 	node* createNode(int x, int y, node* parent)
 	{
-		int gCost = getDistance(x, parent->c->arrayX, y, parent->c->arrayY) + parent->gCost;
-		int hCost = getDistance(x, cells[goalPosition].arrayX, y, cells[goalPosition].arrayY);
-		int fCost = gCost + hCost;
+		float gCost = getDistance(x, parent->c->arrayX, y, parent->c->arrayY) + parent->gCost;
+		float hCost = getDistance(x, cells[goalPosition].arrayX, y, cells[goalPosition].arrayY);
+		float fCost = gCost + hCost;
 		return new node(gCost, hCost, fCost, &cells[x + y * ONE_AXIS_CELLS], parent);
 	}
 
@@ -360,8 +365,8 @@ private:
 				}
 				else // We update the existing node
 				{
-					if (fetchedNode->c->type == GOAL)
-						return;
+					if (fetchedNode->fCost < n->fCost)
+						continue;
 
 					// update fetchedNode
 					fetchedNode->gCost = getDistance(fetchedNode->c->arrayX, n->c->arrayX, fetchedNode->c->arrayY, n->c->arrayY) + n->gCost;
@@ -374,14 +379,16 @@ private:
 		}
 	}
 
-	//void removeNode(std::vector<node>& d, node* n)
-	//{
-	//	for (auto it = d.begin(); it != d.end(); it++)
-	//		if (it->c->arrayX == x && it->c->arrayY == y)
-	//		{
-	//			return 1;
-	//		}
-	//}
+	template <typename T>
+	inline void freeVector(std::vector<T> &v) 
+	{
+		// Free all pointers
+		for (std::vector<T>::iterator i = v.begin(); i != v.end(); ++i)
+			delete* i;
+
+		// Not necessary, but for completeness
+		v.clear();
+	}
 
 	void
 	Astar()
@@ -389,29 +396,7 @@ private:
 		std::vector<node*> discovery;
 
 		node* startingNode = new node(0, getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), &cells[startPosition], nullptr);
-
 		discovery.push_back(startingNode);
-
-		printf("Distance between <1,1> and <2,2> is %f\n", getDistance(1, 2, 1, 2));
-
-		/*
-			do
-			{
-				node* n = findLowestFCost();
-
-				if(n == goalNode)
-					*Backtrack Path and Return*
-				else
-				{
-					updateAndAddAdjacents(discovery, n);
-					n.visited = true;
-					removeNode(discovery, n);
-				}
-
-			}while(!discovery.isEmpty())
-			
-			printf("No path exists :(\n");
-		*/
 
 		do
 		{
@@ -419,12 +404,20 @@ private:
 			if (n == NULL) // There are no more options
 				break;
 
-			if (n->c->type == GOAL)
+			if (n->c->type == GOAL) // We found the goal
 			{
-				// Found the goal!
-				printf("Goal has been found!");
-				
-				discovery.clear();
+				printf("Goal has been found!\n");
+				pathExists = 1;
+
+				node* pathNode = n->parent;
+				while (pathNode->c->type != START)
+				{
+					// Store the path
+					path[pathIndex++] = pathNode->c->getArrayPos();
+					pathNode = pathNode->parent;
+				}
+
+				freeVector(discovery);
 
 				return;
 			}
@@ -432,9 +425,10 @@ private:
 			{
 				addAndUpdateAdjacents(discovery, n);
 				n->visited = true;
+#if DRAW_VISITED_NODES
 				if(n->c->type != START)
-					n->c->type = PATH;
-				//removeNode(discovery, n);
+					n->c->type = DISCOVERED;
+#endif
 			}
 
 
@@ -442,6 +436,13 @@ private:
 
 		printf("No path has been found.");
 		
+		// Free all pointers
+		for (std::vector<node*>::iterator i = discovery.begin(); i != discovery.end(); ++i)
+			delete* i;
+
+		// Not necessary, but for completeness
+		freeVector(discovery);
+
 	}
 	
 };
