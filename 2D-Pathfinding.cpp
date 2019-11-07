@@ -36,7 +36,8 @@
 void inputs();
 void update();
 void draw();
-bool getMouseClick();
+bool getMouseLeftClick();
+bool getMouseRightClick();
 bool getSKeyPress();
 bool getGKeyPress();
 bool getSpaceKeyPress();
@@ -70,7 +71,7 @@ typedef struct {
 
 	int getArrayPos()
 	{
-		return arrayX + arrayY * ONE_AXIS_CELLS;
+ 		return arrayX + arrayY * ONE_AXIS_CELLS;
 	}
 } cell;
 
@@ -78,15 +79,15 @@ typedef struct {
 
 struct node {
 
-	node(int gCost, int hCost, int fCost, cell* c, node* parent) : gCost{ gCost }, hCost{ hCost }, fCost{ fCost }, c{ c }, parent{ parent }
+	node(float gCost, float hCost, float fCost, cell* c, node* parent) : gCost{ gCost }, hCost{ hCost }, fCost{ fCost }, c{ c }, parent{ parent }
 	{}
 
-	int gCost = 0;
-	int hCost = 0;
-	int fCost = 0;
+	float gCost = 0;
+	float hCost = 0;
+	float fCost = 0;
 	bool visited = 0;
-	node* parent;
-	cell* c;
+	node* parent = NULL;
+	cell* c = NULL;
 };
 
 //// Grid struct ////
@@ -213,6 +214,12 @@ struct grid{
 
 		Astar();
 
+		//node startingNode(0, getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), &cells[startPosition], nullptr);
+
+		//node n = createNode(1, 1, &startingNode);
+
+		//printf("Node's X-value is: %i", n.c->arrayX);
+
 	}
 
 private:
@@ -275,42 +282,75 @@ private:
 
 #endif
 
-	int getDistance(int x, int x1, int y, int y1)
+	float getDistance(int x, int x1, int y, int y1)
 	{
-		return std::sqrt(std::pow(x1 - x, 2) + std::pow(y1 - y, 2));
+		float xDistSquared = std::powf(float(x1 - x), 2);
+		float yDistSquared = std::powf(float(y1 - y), 2);
+		return std::sqrtf(xDistSquared + yDistSquared);
 	}
 
 	/////// THIS NEEDS TO BE CHANGED TO REFLECT PROPER G AND H COST CALCULATION! ///////
 	/// I think this is now fixed? We can try it and if things don't work we can fix it ///
-	node createNode(int x, int y, node* parent)
+	node* createNode(int x, int y, node* parent)
 	{
 		int gCost = getDistance(x, parent->c->arrayX, y, parent->c->arrayY) + parent->gCost;
 		int hCost = getDistance(x, cells[goalPosition].arrayX, y, cells[goalPosition].arrayY);
 		int fCost = gCost + hCost;
-		cell* c = &cells[x + y * ONE_AXIS_CELLS];
-		return node(gCost, hCost, fCost, c, parent);
+		return new node(gCost, hCost, fCost, &cells[x + y * ONE_AXIS_CELLS], parent);
 	}
 
-	bool checkVisited(std::vector<node> &d, int x, int y)
+	bool checkVisited(std::vector<node*> &d, int x, int y)
 	{
 		for (auto it = d.begin(); it != d.end(); it++)
-			if (it->c->arrayX == x && it->c->arrayY == y)
+			if ((**it).c->arrayX == x && (**it).c->arrayY == y)
 				return 1;
+		return 0;
 	}
 
-	node* fetchNode(std::vector<node>& d, int x, int y)
+	node* fetchNode(std::vector<node*>& d, int x, int y)
 	{
 		for (auto it = d.begin(); it != d.end(); it++)
-			if (it->c->arrayX == x && it->c->arrayY == y)
-				return &(*it);
-		return nullptr;
+			if ((**it).c->arrayX == x && (**it).c->arrayY == y)
+				return (*it);
+		return NULL;
 	}
 
-	void addAndUpdateAdjacents(std::vector<node> &d, node* n)
+	node* findLowestFCost(std::vector<node*>& d)
+	{
+		if (d.empty())
+			return NULL;
+
+		node* lowest = NULL;
+
+		for (auto it = d.begin(); it != d.end(); it++)
+		{
+			if ((**it).visited)
+				continue;
+
+			if ((**it).c->type == GOAL)
+				return (*it);
+
+			if (lowest == NULL)
+			{
+				lowest = (*it);
+				continue;
+			}
+
+			if((**it).fCost < lowest->fCost)
+				lowest = (*it);
+		}
+		
+		return lowest;
+	}
+
+	void addAndUpdateAdjacents(std::vector<node*> &d, node* n)
 	{
 		for (int i = 0; i < 8; i++)
 		{
-			int offset = adj[i];
+			if (n == NULL)
+				break;
+
+			int offset = n->c->getArrayPos() + adj[i];
 			if (cells[offset].type != BOUNDARY && !checkVisited(d, cells[offset].arrayX, cells[offset].arrayY))
 			{
 				node* fetchedNode = fetchNode(d, cells[offset].arrayX, cells[offset].arrayY);
@@ -320,20 +360,39 @@ private:
 				}
 				else // We update the existing node
 				{
+					if (fetchedNode->c->type == GOAL)
+						return;
+
 					// update fetchedNode
+					fetchedNode->gCost = getDistance(fetchedNode->c->arrayX, n->c->arrayX, fetchedNode->c->arrayY, n->c->arrayY) + n->gCost;
+					fetchedNode->hCost = getDistance(fetchedNode->c->arrayX, cells[goalPosition].arrayX, fetchedNode->c->arrayY, cells[goalPosition].arrayY);
+					fetchedNode->fCost = fetchedNode->gCost + fetchedNode->hCost;
+					fetchedNode->parent = n;
 				}
 
 			}
 		}
 	}
 
+	//void removeNode(std::vector<node>& d, node* n)
+	//{
+	//	for (auto it = d.begin(); it != d.end(); it++)
+	//		if (it->c->arrayX == x && it->c->arrayY == y)
+	//		{
+	//			return 1;
+	//		}
+	//}
+
 	void
 	Astar()
 	{
-		std::vector<node> discovery;
+		std::vector<node*> discovery;
 
-		node startingNode = createNode(cells[startPosition].arrayX, cells[startPosition].arrayY, nullptr);
-		startingNode.visited = true;
+		node* startingNode = new node(0, getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), &cells[startPosition], nullptr);
+
+		discovery.push_back(startingNode);
+
+		printf("Distance between <1,1> and <2,2> is %f\n", getDistance(1, 2, 1, 2));
 
 		/*
 			do
@@ -345,12 +404,43 @@ private:
 				else
 				{
 					updateAndAddAdjacents(discovery, n);
+					n.visited = true;
+					removeNode(discovery, n);
 				}
 
 			}while(!discovery.isEmpty())
 			
 			printf("No path exists :(\n");
 		*/
+
+		do
+		{
+			node* n = findLowestFCost(discovery);
+			if (n == NULL) // There are no more options
+				break;
+
+			if (n->c->type == GOAL)
+			{
+				// Found the goal!
+				printf("Goal has been found!");
+				
+				discovery.clear();
+
+				return;
+			}
+			else
+			{
+				addAndUpdateAdjacents(discovery, n);
+				n->visited = true;
+				if(n->c->type != START)
+					n->c->type = PATH;
+				//removeNode(discovery, n);
+			}
+
+
+		} while (!discovery.empty());
+
+		printf("No path has been found.");
 		
 	}
 	
@@ -371,10 +461,14 @@ float iTime = 0;
 // G - Place goal at location of mouse
 // Space - Create path
 // Left Click - Place wall/Remove wall
+// Right Click - Get node's values
 
 // Mouse
 bool leftClick = 0;
 bool prevLeftClick = 0;
+
+bool rightClick = 0;
+bool prevRightClick = 0;
 
 int mouseX = 0;
 int mouseY = 0;
@@ -406,6 +500,7 @@ main(int args, char* argv[])
 	{	
 		// Set previous mouse and button states
 		prevLeftClick = leftClick;
+		prevRightClick = rightClick;
 		sKeyPrev = sKeyPress;
 		gKeyPrev = gKeyPress;
 		spaceKeyPrev = spaceKeyPress;
@@ -426,6 +521,17 @@ main(int args, char* argv[])
 			else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT)
 			{
 				leftClick = 0;
+				continue;
+			}
+
+			if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT)
+			{
+				rightClick = 1;
+				continue;
+			}
+			else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT)
+			{
+				rightClick = 0;
 				continue;
 			}
 
@@ -486,7 +592,7 @@ inputs()
 	if (mouseX < 0 || mouseX > WINDOW_WIDTH || mouseY < 0 || mouseY > WINDOW_HEIGHT)
 		return;
 
-	if (getMouseClick())
+	if (getMouseLeftClick())
 	{
 		printf("Click detected @ <%i, %i>\n", mouseX, mouseY);
 
@@ -579,12 +685,19 @@ draw()
 }
 
 bool 
-getMouseClick()
+getMouseLeftClick()
 {
 	if (leftClick == 1 && prevLeftClick == 0)
 		return true;
-	else
-		return false;
+	return false;
+}
+
+bool 
+getMouseRightClick()
+{
+	if (rightClick == 1 && prevRightClick == 0)
+		return true;
+	return false;
 }
 
 bool 
@@ -592,8 +705,7 @@ getSKeyPress()
 {
 	if (sKeyPress == 1 && sKeyPrev == 0)
 		return true;
-	else
-		return false;
+	return false;
 }
 
 bool 
@@ -601,8 +713,7 @@ getGKeyPress()
 {
 	if (gKeyPress == 1 && gKeyPrev == 0)
 		return true;
-	else
-		return false;
+	return false;
 }
 
 bool
@@ -610,8 +721,7 @@ getSpaceKeyPress()
 {
 	if (spaceKeyPress == 1 && spaceKeyPrev == 0)
 		return true;
-	else
-		return false;
+	return false;
 }
 
 #pragma endregion
