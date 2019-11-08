@@ -16,8 +16,6 @@
 
 #define DEFAULT_COST 1
 
-#define USE_DFT 0
-
 #define DRAW_VISITED_NODES 0
 
 #pragma endregion
@@ -35,9 +33,16 @@
 
 #pragma region Function Declarations
 
+// Contains the code for resolving inputs
 void inputs();
+
+// Contains the code for frame-by-frame logic
 void update();
+
+// Encapsulates all code required to draw the scene
 void draw();
+
+// Returns true if the input is switching from a false to a true state, does not return true if input is held
 bool getMouseLeftClick();
 bool getMouseRightClick();
 bool getSKeyPress();
@@ -64,6 +69,8 @@ typedef enum {
 
 //// Cell struct ////
 
+// Cells are physically represented on the screen
+// Cells persist and a fixed number are created on program initialization equal to ONE_AXIS_CELLS^2
 typedef struct {
 	int arrayX = -1;
 	int arrayY = -1;
@@ -80,6 +87,8 @@ typedef struct {
 
 //// Node struct ////
 
+// Nodes are created as needed by the A* pathfinding algorithm and contain pointers to their represented cells
+// This allows us to clear memory after we find a path
 struct node {
 
 	node(float gCost, float hCost, float fCost, cell* c, node* parent) : gCost{ gCost }, hCost{ hCost }, fCost{ fCost }, c{ c }, parent{ parent }
@@ -94,21 +103,28 @@ struct node {
 };
 
 //// Grid struct ////
-
+// The core purpose of this project is mostly contained in this struct
+// The grid represents the discritized world space via cells and allows us to place start 
+// and goal locations as well as obstacles to be traversed when we call our pathfinding algorithm
 struct grid{
 	cell cells[TOTAL_CELLS];
 
+	// Tells us if the goal exists and where in the cells array it is located
 	bool goalExist = 0;
 	int goalPosition = 0;
 
+	// Tells us if the start exists and where in the cells array it is located
 	bool startExist = 0;
 	int startPosition = 0;
 
+	// Grid deconstructor ( since we use a static array we don't need to free anything )
 	~grid()
 	{
 
 	}
 
+	// Populate the cells array with their starting information
+	// This is where we assign cells their screen position, array position ( via X, Y-coordinates ), and boundary cells their type
 	void 
 	InitCells()
 	{
@@ -135,7 +151,10 @@ struct grid{
 			}
 	}
 
-	cell* getCellFromScreenPosition(int x, int y)
+	// Retrieves a cell from their screen position
+	// This is primarily used for retrieving a cell when the mouse is clicked
+	cell*
+	getCellFromScreenPosition(int x, int y)
 	{
 		// We need to add 1 to the cell's discrete value to compensate for the boundary cells off-screen
 		int xOffset = int(x / int(CELL_OFFSET)) + 1;
@@ -143,11 +162,14 @@ struct grid{
 		return &cells[xOffset + yOffset];
 	}
 
-	cell* getCellDiscrete(int x, int y)
+	// Retrieves a cell via their X, Y array coordinates
+	cell* 
+	getCellDiscrete(int x, int y)
 	{
 		return &cells[x + y * ONE_AXIS_CELLS];
 	}
 
+	// Given a pointer to the SDL_Renderer object, we can draw the grid to current buffer
 	void
 	drawGrid(SDL_Renderer* renderer)
 	{
@@ -173,21 +195,21 @@ struct grid{
 			}
 	}
 
+	// Removes the path status from cells, we could use the path to do this without checking all cells
+	// We don't do this since the debug modes also mark things as DISCOVERED
 	void
 	resetPath()
 	{
 		for (int i = 0; i < ONE_AXIS_CELLS; i++)
 			for (int j = 0; j < ONE_AXIS_CELLS; j++)
-			{
 				if (cells[i + j * ONE_AXIS_CELLS].type == PATH || cells[i + j * ONE_AXIS_CELLS].type == DISCOVERED)
 					cells[i + j * ONE_AXIS_CELLS].type = EMPTY;
-			}
 
 		pathExists = 0;
 		pathIndex = 0;
 	}
 
-	// A* Pathfinding, disregards diagonals
+	// Executes and plots the path created by the A* algorithm
 	void
 	pathfindGrid()
 	{
@@ -196,107 +218,39 @@ struct grid{
 		if (!startExist || !goalExist)
 			return;
 
-#if USE_DFT
-
-		// Execute A* pathfinding code
-		bool v[TOTAL_CELLS];
-		int p[TOTAL_CELLS];
-		int pI = 0;
-
-		for (int i = 0; i < TOTAL_CELLS; i++)
-			v[i] = 0;
-
-		DFT(startPosition, v, p, pI);
-
-		if (pathExists)
-		{
-			for (int i = 1; i < pI - 1; i++)
-			{
-				cells[p[i]].type = PATH;
-			}
-		}
-
-#endif
-
 		Astar();
 
 		// Draw Path
 		for (int i = 0; i < pathIndex; i++)
 		{
-			cells[path[i]].type = PATH;
+			if(cells[path[i]].type != GOAL)
+				cells[path[i]].type = PATH;
 		}
-		
 
 	}
 
 private:
+#pragma region  PATHFINDING CODE
 
 	bool pathExists = 0;
 	
 	int path[TOTAL_CELLS];
 	int pathIndex = 0;
 
-#if !USE_DFT
 	int adj[8] = { -1 * ONE_AXIS_CELLS - 1, -1 * ONE_AXIS_CELLS, -1 * ONE_AXIS_CELLS + 1,
 				   -1,										   						   1,
 					    ONE_AXIS_CELLS - 1,	     ONE_AXIS_CELLS,      ONE_AXIS_CELLS + 1};
-#endif
 
-#if USE_DFT
-
-	// Top, right, down, left
-	int adj[4] = { -1 * ONE_AXIS_CELLS, 1, ONE_AXIS_CELLS, -1 };
-	
-	bool 
-	DFT(int currentIndex, bool visited[], int path[], int &pathIndex)
-	{
-		visited[currentIndex] = 1;
-		path[pathIndex] = currentIndex;
-		pathIndex++;
-
-		if (currentIndex == goalPosition)
-		{
-			// Path found
-			printf("Path found\n");
-			pathExists = 1;
-			return 1;
-		}
-		else
-		{
-			// Check all adjacent verticies to current vertex
-			for (int i = 0; i < 4; i++)
-			{
-				int offset = currentIndex + adj[i];
-				cell* c = &cells[offset];
-				if(visited[offset] == 0)
-					if (c->type == BOUNDARY)
-					{
-						visited[offset] = 1;
-						continue;
-					}
-					else
-					{
-						if (DFT(offset, visited, path, pathIndex) == 1)
-							return 1;
-					}
-
-			}
-		}
-
-		pathIndex--;
-		visited[currentIndex] = false;
-	}
-
-#endif
-
-	float getDistance(int x, int x1, int y, int y1)
+	float 
+	getDistance(int x, int x1, int y, int y1)
 	{
 		float xDistSquared = std::powf(float(x1 - x), 2);
 		float yDistSquared = std::powf(float(y1 - y), 2);
 		return std::sqrtf(xDistSquared + yDistSquared);
 	}
 
-	node* createNode(int x, int y, node* parent)
+	node* 
+	createNode(int x, int y, node* parent)
 	{
 		float gCost = getDistance(x, parent->c->arrayX, y, parent->c->arrayY) + parent->gCost;
 		float hCost = getDistance(x, cells[goalPosition].arrayX, y, cells[goalPosition].arrayY);
@@ -304,7 +258,8 @@ private:
 		return new node(gCost, hCost, fCost, &cells[x + y * ONE_AXIS_CELLS], parent);
 	}
 
-	bool checkVisited(std::vector<node*> &d, int x, int y)
+	bool 
+	checkVisited(std::vector<node*> &d, int x, int y)
 	{
 		for (auto it = d.begin(); it != d.end(); it++)
 			if ((**it).c->arrayX == x && (**it).c->arrayY == y)
@@ -312,7 +267,8 @@ private:
 		return 0;
 	}
 
-	node* fetchNode(std::vector<node*>& d, int x, int y)
+	node* 
+	fetchNode(std::vector<node*>& d, int x, int y)
 	{
 		for (auto it = d.begin(); it != d.end(); it++)
 			if ((**it).c->arrayX == x && (**it).c->arrayY == y)
@@ -320,7 +276,8 @@ private:
 		return NULL;
 	}
 
-	node* findLowestFCost(std::vector<node*>& d)
+	node* 
+	findLowestFCost(std::vector<node*>& d)
 	{
 		if (d.empty())
 			return NULL;
@@ -348,7 +305,8 @@ private:
 		return lowest;
 	}
 
-	void addAndUpdateAdjacents(std::vector<node*> &d, node* n)
+	void 
+	addAndUpdateAdjacents(std::vector<node*> &d, node* n)
 	{
 		for (int i = 0; i < 8; i++)
 		{
@@ -360,9 +318,7 @@ private:
 			{
 				node* fetchedNode = fetchNode(d, cells[offset].arrayX, cells[offset].arrayY);
 				if (fetchedNode == nullptr) // We add a new node
-				{
 					d.push_back(createNode(cells[offset].arrayX, cells[offset].arrayY, n));
-				}
 				else // We update the existing node
 				{
 					if (fetchedNode->fCost < n->fCost)
@@ -380,7 +336,8 @@ private:
 	}
 
 	template <typename T>
-	inline void freeVector(std::vector<T> &v) 
+	inline void 
+	freeVector(std::vector<T> &v) 
 	{
 		// Free all pointers
 		for (std::vector<T>::iterator i = v.begin(); i != v.end(); ++i)
@@ -390,60 +347,70 @@ private:
 		v.clear();
 	}
 
+	// Executes the A* Pathfinding Algorithm
 	void
 	Astar()
 	{
+		// Create a vector to store all discovered ( and visited ) nodes
 		std::vector<node*> discovery;
 
+		// Create the starting node and add it to be explored on the vector
 		node* startingNode = new node(0, getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), getDistance(cells[startPosition].arrayX, cells[goalPosition].arrayX, cells[startPosition].arrayY, cells[goalPosition].arrayY), &cells[startPosition], nullptr);
 		discovery.push_back(startingNode);
 
-		do
+		// Until either a path is found or no path exists we perform the algorithm
+		while(1)
 		{
+			// Find the lowest cost, explorable, node in the frontier
 			node* n = findLowestFCost(discovery);
-			if (n == NULL) // There are no more options
+			if (n == NULL) // There are no more options, therefore we break the loop without a path being found
 				break;
 
-			if (n->c->type == GOAL) // We found the goal
+			if (n->c->type == GOAL) // We found the goal, therefore a path exists
 			{
+				// Print that a path exists
 				printf("Goal has been found!\n");
 				pathExists = 1;
 
-				node* pathNode = n->parent;
+				// Set the pathNode equal to the current, goal, node
+				node* pathNode = n;
+				// While we aren't at the starting node, travel to the parent
 				while (pathNode->c->type != START)
 				{
-					// Store the path
+					// Store the path in the array, increase the index, and set the next pathNode to equal the parent of the current pathNode
 					path[pathIndex++] = pathNode->c->getArrayPos();
 					pathNode = pathNode->parent;
 				}
 
+				// Frees the memory in the vector before returning from the pathfinding function
 				freeVector(discovery);
 
 				return;
 			}
 			else
 			{
+				// If the goal was not found, add all, viable, adjacent cells to the discovery vector and update all cells with better routes if such case exists
 				addAndUpdateAdjacents(discovery, n);
+				// Mark node as visited
 				n->visited = true;
 #if DRAW_VISITED_NODES
+				// If the node is not the starting node, then mark it to be drawn as a visited/discovered node
 				if(n->c->type != START)
 					n->c->type = DISCOVERED;
 #endif
 			}
 
 
-		} while (!discovery.empty());
+		}
 
 		printf("No path has been found.");
-		
-		// Free all pointers
-		for (std::vector<node*>::iterator i = discovery.begin(); i != discovery.end(); ++i)
-			delete* i;
 
-		// Not necessary, but for completeness
+		// Free the vector and return from the algorithm without a path being found
 		freeVector(discovery);
 
 	}
+
+#pragma endregion
 	
 };
 
@@ -506,6 +473,7 @@ main(int args, char* argv[])
 		gKeyPrev = gKeyPress;
 		spaceKeyPrev = spaceKeyPress;
 
+		// While an unresolved event exists, we iterate
 		while (SDL_PollEvent(&e))
 		{
 			if ((e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) || e.type == SDL_QUIT)
@@ -568,6 +536,7 @@ main(int args, char* argv[])
 
 		}
 
+		// If the game window is no longer running, then we break from the game loop
 		if (!gameWindow->checkIfRunning())
 			break;
 
@@ -580,6 +549,7 @@ main(int args, char* argv[])
 		iTime += DELTA_TIME;
 	}
 
+	// Delete the gameWindow object and Grid object before closing the application
 	delete gameWindow;
 	delete Grid;
 
