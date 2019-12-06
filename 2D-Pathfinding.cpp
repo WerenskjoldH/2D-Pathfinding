@@ -8,7 +8,7 @@
 
 // This is used for the number of cells on one axis
 // +2 is used to account for the boundary cells
-#define ONE_AXIS_CELLS (10 + 2)
+#define ONE_AXIS_CELLS (20 + 2)
 #define TOTAL_CELLS ONE_AXIS_CELLS * ONE_AXIS_CELLS
 #define CELL_OFFSET WINDOW_WIDTH/(ONE_AXIS_CELLS-2)
 
